@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 
 const FEATURES = [
   {
@@ -50,6 +52,18 @@ const STEPS = [
 ];
 
 export default function Landing() {
+  const router = useRouter();
+  const { ready, authenticated, login } = useAuth();
+
+  // CTA principal: si ya tiene sesión va al dashboard; si no, abre el login de Privy
+  const handleEnter = () => {
+    if (authenticated) {
+      router.push("/dashboard");
+    } else {
+      login();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
       {/* ─── Nav ─── */}
@@ -70,12 +84,13 @@ export default function Landing() {
             </div>
             <span className="text-lg font-black tracking-widest uppercase text-text-primary">Playrs</span>
           </div>
-          <Link
-            href="/dashboard"
-            className="px-4 py-2 rounded-xl bg-blue text-white text-sm font-bold hover:opacity-90 active:scale-95 transition-all shadow-glow-blue"
+          <button
+            onClick={handleEnter}
+            disabled={!ready}
+            className="px-4 py-2 rounded-xl bg-blue text-white text-sm font-bold hover:opacity-90 active:scale-95 transition-all shadow-glow-blue cursor-pointer disabled:opacity-60"
           >
-            Entrar a la App
-          </Link>
+            {authenticated ? "Ir a la App" : "Entrar"}
+          </button>
         </div>
       </header>
 
@@ -96,12 +111,13 @@ export default function Landing() {
             Playrs es la plataforma donde el rendimiento real de los futbolistas de élite mueve el precio de fichas digitales. Colecciona, intercambia, apuesta y forja — todo respaldado por un oráculo matemático justo.
           </p>
           <div className="mt-9 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link
-              href="/dashboard"
-              className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-gradient-to-r from-blue to-green text-white text-base font-bold hover:opacity-90 active:scale-95 transition-all shadow-glow-blue"
+            <button
+              onClick={handleEnter}
+              disabled={!ready}
+              className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-gradient-to-r from-blue to-green text-white text-base font-bold hover:opacity-90 active:scale-95 transition-all shadow-glow-blue cursor-pointer disabled:opacity-60"
             >
-              Empezar ahora →
-            </Link>
+              {authenticated ? "Ir a la App →" : "Empezar ahora →"}
+            </button>
             <Link
               href="/market"
               className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-background-secondary border border-border text-text-primary text-base font-bold hover:border-blue/40 transition-all"
@@ -165,12 +181,13 @@ export default function Landing() {
           <div className="absolute -top-16 -right-16 w-48 h-48 bg-blue/20 rounded-full blur-3xl pointer-events-none" />
           <h2 className="text-2xl sm:text-3xl font-black text-text-primary mb-3">Tu equipo te espera</h2>
           <p className="text-text-secondary mb-8 max-w-lg mx-auto">Crea tu cuenta gratis y empieza a construir tu portafolio de estrellas del fútbol hoy mismo.</p>
-          <Link
-            href="/dashboard"
-            className="inline-block px-8 py-3.5 rounded-xl bg-gradient-to-r from-blue to-green text-white text-base font-bold hover:opacity-90 active:scale-95 transition-all shadow-glow-blue"
+          <button
+            onClick={handleEnter}
+            disabled={!ready}
+            className="inline-block px-8 py-3.5 rounded-xl bg-gradient-to-r from-blue to-green text-white text-base font-bold hover:opacity-90 active:scale-95 transition-all shadow-glow-blue cursor-pointer disabled:opacity-60"
           >
-            Crear mi cuenta →
-          </Link>
+            {authenticated ? "Ir a la App →" : "Crear mi cuenta →"}
+          </button>
         </div>
       </section>
 

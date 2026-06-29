@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/context/ThemeContext";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { UserProfileModal } from "@/components/layout/UserProfileModal";
 import { AppPrivyProvider } from "@/providers/PrivyProvider";
+import { AuthProvider } from "@/context/AuthContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,14 +36,16 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-background text-foreground" suppressHydrationWarning>
         <AppPrivyProvider>
-          <ThemeProvider>
-            <LanguageProvider>
-              <StoreProvider>
-                {children}
-                <UserProfileModal />
-              </StoreProvider>
-            </LanguageProvider>
-          </ThemeProvider>
+          <AuthProvider>
+            <ThemeProvider>
+              <LanguageProvider>
+                <StoreProvider>
+                  {children}
+                  <UserProfileModal />
+                </StoreProvider>
+              </LanguageProvider>
+            </ThemeProvider>
+          </AuthProvider>
         </AppPrivyProvider>
       </body>
     </html>

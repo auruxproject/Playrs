@@ -3,6 +3,7 @@
 import { useTheme } from "@/context/ThemeContext";
 import { useStore } from "@/context/StoreContext";
 import { useLanguage } from "@/context/LanguageContext";
+import { useAuth } from "@/context/AuthContext";
 import { LANGUAGES, type Lang } from "@/lib/i18n";
 
 interface HeaderProps {
@@ -21,6 +22,7 @@ export function Header({
   const { theme, toggleTheme } = useTheme();
   const { userAvatar, setIsProfileOpen } = useStore();
   const { lang, setLang, t } = useLanguage();
+  const { ready, authenticated, profile, login, logout } = useAuth();
 
   const cycleLang = () => {
     const idx = LANGUAGES.findIndex((l) => l.code === lang);
@@ -101,15 +103,40 @@ export function Header({
             <span className="absolute top-1 right-1 w-2 h-2 bg-red rounded-full" />
           </button>
 
-          {/* Avatar */}
-          <button
-            onClick={() => setIsProfileOpen(true)}
-            className="p-1.5 rounded-xl hover:bg-background-tertiary transition-colors cursor-pointer"
-          >
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue to-purple flex items-center justify-center text-sm shadow-inner">
-              {userAvatar}
-            </div>
-          </button>
+          {/* Auth: login / avatar + logout */}
+          {ready && !authenticated ? (
+            <button
+              onClick={login}
+              className="ml-1 px-3 py-1.5 rounded-xl bg-blue text-white text-xs font-bold hover:opacity-90 active:scale-95 transition-all shadow-glow-blue cursor-pointer"
+            >
+              {t("auth.login") !== "auth.login" ? t("auth.login") : "Entrar"}
+            </button>
+          ) : (
+            <>
+              {/* Avatar — abre perfil */}
+              <button
+                onClick={() => setIsProfileOpen(true)}
+                title={profile?.username ?? profile?.wallet_address ?? "Mi perfil"}
+                className="p-1.5 rounded-xl hover:bg-background-tertiary transition-colors cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue to-purple flex items-center justify-center text-sm shadow-inner">
+                  {profile?.avatar_emoji ?? userAvatar}
+                </div>
+              </button>
+              {authenticated && (
+                <button
+                  onClick={logout}
+                  title="Cerrar sesión"
+                  aria-label="Cerrar sesión"
+                  className="p-2 rounded-xl hover:bg-background-tertiary transition-colors cursor-pointer"
+                >
+                  <svg className="w-5 h-5 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                </button>
+              )}
+            </>
+          )}
         </div>
       </div>
     </header>
