@@ -7,9 +7,8 @@ WORKDIR /app
 
 # ---- deps stage ----
 FROM base AS deps
-COPY package.json pnpm-lock.yaml* ./
-RUN echo '{"onlyBuiltDependencies":["@reown/appkit","bufferutil","keccak","sharp","unrs-resolver","utf-8-validate"]}' > pnpm.json && \
-    pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml* ./
+RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 
 # ---- builder stage ----
 FROM base AS builder
