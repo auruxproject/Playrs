@@ -1,0 +1,14 @@
+node_modules
+.next
+.env
+.env.local
+.env.production
+.env*.local
+*.pem
+.claude/
+docs/
+"ai studio"/
+ai studio/
+ENTREGA_PROYECTO.md
+comparativa_jornadas_100.md
+proceso del proyecto con claude code.txt
