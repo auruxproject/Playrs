@@ -7,7 +7,7 @@ import { useLanguage } from "@/context/LanguageContext";
 
 const navItems = [
   {
-    href: "/",
+    href: "/dashboard",
     labelKey: "nav.home.short",
     icon: (active: boolean) => (
       <svg

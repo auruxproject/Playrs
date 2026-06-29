@@ -10,7 +10,7 @@ import { LANGUAGES, type Lang } from "@/lib/i18n";
 
 const navItems = [
   {
-    href: "/",
+    href: "/dashboard",
     labelKey: "nav.home",
     icon: (active: boolean) => (
       <svg className={`w-5 h-5 ${active ? "text-blue" : "text-text-secondary"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
