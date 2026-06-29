@@ -7,7 +7,7 @@ WORKDIR /app
 
 # ---- deps stage ----
 FROM base AS deps
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json pnpm-lock.yaml* pnpm.json* ./
 RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 
 # ---- builder stage ----
