@@ -29,10 +29,11 @@ export async function GET(req: NextRequest) {
 
     if (existing) return NextResponse.json(existing);
 
-    // Crear perfil nuevo
+    // Crear perfil nuevo. En devnet (beta) se otorga saldo de prueba para poder operar.
+    const isDevnet = (process.env.NEXT_PUBLIC_SOLANA_NETWORK ?? "devnet") !== "mainnet";
     const { data: newProfile, error } = await supabaseAdmin
       .from("profiles")
-      .insert({ privy_did: privyDid })
+      .insert({ privy_did: privyDid, balance_usdc: isDevnet ? 1000 : 0 })
       .select()
       .single();
 
