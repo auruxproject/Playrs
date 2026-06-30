@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { diag } from "@/lib/diag";
 
 // GET /api/health — diagnóstico: presencia de env vars (sin valores) + conexión a Supabase.
 // No expone secretos, solo true/false de si están configurados.
@@ -24,5 +25,5 @@ export async function GET() {
     supabaseError = e instanceof Error ? e.message : String(e);
   }
 
-  return NextResponse.json({ env, supabaseOk, supabaseError });
+  return NextResponse.json({ env, supabaseOk, supabaseError, lastUserCall: diag.lastUserCall });
 }
