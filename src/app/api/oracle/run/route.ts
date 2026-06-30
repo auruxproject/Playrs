@@ -3,8 +3,9 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { runOracle } from "@/lib/engine/oracle";
 import type { Competition } from "@/lib/engine/types";
 
-const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY!;
-const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST ?? "apifootball3.p.rapidapi.com";
+// API-SPORTS directo (https://dashboard.api-football.com). Cabecera: x-apisports-key.
+const APISPORTS_KEY = process.env.APISPORTS_KEY ?? process.env.RAPIDAPI_KEY!;
+const APISPORTS_HOST = process.env.APISPORTS_HOST ?? "v3.football.api-sports.io";
 
 // POST /api/oracle/run
 // Body: { fixture_id: number, competition: string }
@@ -21,13 +22,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "fixture_id requerido" }, { status: 400 });
   }
 
-  // 1. Obtener estadísticas del partido desde API-Football
+  // 1. Obtener estadísticas del partido desde API-SPORTS
   const statsRes = await fetch(
-    `https://${RAPIDAPI_HOST}/fixtures/players?fixture=${fixture_id}`,
+    `https://${APISPORTS_HOST}/fixtures/players?fixture=${fixture_id}`,
     {
       headers: {
-        "x-rapidapi-key": RAPIDAPI_KEY,
-        "x-rapidapi-host": RAPIDAPI_HOST,
+        "x-apisports-key": APISPORTS_KEY,
       },
     }
   );
