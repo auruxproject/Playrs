@@ -165,10 +165,10 @@ describe("matchPerformance", () => {
 
   it("calcula rendimiento dentro del rango", () => {
     // Para FW: base = 7.0, K = 15
-    // rawScore = 8.5
-    // (8.5 - 7.0) / 15 = 0.1
-    const perf = matchPerformance(8.5, "FW");
-    expect(perf).toBeCloseTo(0.1, 4);
+    // rawScore = 7.6 -> (7.6 - 7.0) / 15 = 0.04, dentro de PERFORMANCE_CAP (±0.05)
+    // así que no se topa -- el caso de tope ya se cubre en los dos tests de arriba.
+    const perf = matchPerformance(7.6, "FW");
+    expect(perf).toBeCloseTo(0.04, 4);
   });
 });
 
@@ -246,13 +246,18 @@ describe("tokenPrice", () => {
   });
 
   it("respeta precio mínimo", () => {
-    const price = tokenPrice(1, -0.5, 1.0, 1.0);
+    // FINAL_CHANGE_CAP (±10%) se aplica ANTES del tope de precio: con un
+    // anchor bajo (0.5) incluso el cambio negativo máximo posible (-10%)
+    // debe seguir topándose en PRICE_MIN.
+    // 0.5 * (1 + (-1 capado a -0.10)) = 0.5 * 0.9 = 0.45 → tope PRICE_MIN 0.5
+    const price = tokenPrice(0.5, -1, 1.0, 1.0);
     expect(price).toBeCloseTo(0.5, 5);
   });
 
   it("respeta precio máximo", () => {
-    const price = tokenPrice(400, 0.5, 1.5, 2.0);
-    // 400 * (1 + 0.5 * 1.5 * 2.0) = 400 * 2.5 = 1000 → tope 500
+    // El cambio bruto (0.5*1.5*2.0=1.5) se topa primero a FINAL_CHANGE_CAP (10%).
+    // 480 * (1 + 0.10) = 528 → tope PRICE_MAX 500
+    const price = tokenPrice(480, 0.5, 1.5, 2.0);
     expect(price).toBeCloseTo(500, 5);
   });
 });
@@ -294,14 +299,15 @@ describe("runOracle", () => {
 
     // S_GK = 6*0.8 + 1*5.0 + 1*4.0 = 4.8 + 5.0 + 4.0 = 13.8
     expect(result.rawScore).toBe(13.8);
-    // R_match = (13.8 - 5.0) / 15 = 0.587 → tope 0.15
+    // R_match = (13.8 - 5.0) / 15 = 0.587 → tope PERFORMANCE_CAP (±0.05, recalibrado en v3.0)
     expect(result.performance).toBe(PERFORMANCE_CAP);
     // M_comp = 1.5 (Champions)
     expect(result.compMultiplier).toBe(1.5);
     // M_streak = 1.2 (3 jornadas)
     expect(result.streakMultiplier).toBe(1.2);
-    // P_t = 45 * (1 + 0.15 * 1.5 * 1.2) = 45 * 1.27 = 57.15
-    expect(result.price).toBeCloseTo(57.15, 1);
+    // Cambio bruto = 0.05 * 1.5 * 1.2 = 0.09, dentro de FINAL_CHANGE_CAP (±0.10), no se topa.
+    // P_t = 45 * (1 + 0.09) = 45 * 1.09 = 49.05
+    expect(result.price).toBeCloseTo(49.05, 1);
     
     // Rating = 70 + 60*0.587 = 105.2 (capped at 100)
     expect(result.matchRating).toBe(100);
@@ -345,45 +351,57 @@ describe("calculateGlobalRating (Suavizado)", () => {
   });
 });
 
+// NOTA (2026-07-06): estos dos describe() probaban el modelo económico viejo
+// (v2.2, tres pirámides con multiplicadores 5x/4x y fees por categoría). El
+// código real de StoreContext.tsx migró al modelo v3.0 vigente (ver
+// docs/ARQUITECTURA_ECONOMICA_COMPLETA.md §16) -- 10/8/6/5 fichas por forja y
+// comisión de referido plana por tier -- pero nadie había actualizado estos
+// tests. Se corrigen aquí para reflejar el comportamiento real y vigente.
 describe("getCardValuation", () => {
   it("calcula valoración estándar como el precio base", () => {
     expect(getCardValuation(27.50, "standard")).toBe(27.50);
     expect(getCardValuation(78.20, "standard")).toBe(78.20);
   });
 
-  it("calcula valoración acumulada y primas para nivel Plata", () => {
-    // Güler (c1): base = 27.50. Silver = 5 * 27.50 + 10 = 137.50 + 10 = 147.50
-    expect(getCardValuation(27.50, "silver")).toBe(147.50);
-    // Bellingham (c3): base = 78.20. Silver = 5 * 78.20 + 30 = 391.00 + 30 = 421.00
-    expect(getCardValuation(78.20, "silver")).toBeCloseTo(421.00, 5);
+  it("calcula valoración acumulada y primas para nivel Plata (v3.0: 10 fichas + premio fijo por categoría)", () => {
+    // Güler (c1, precio < 30): Silver = 10 * 27.50 + 10 = 275.00 + 10 = 285.00
+    expect(getCardValuation(27.50, "silver")).toBe(285.00);
+    // Bellingham (c3, 60 <= precio < 100): Silver = 10 * 78.20 + 30 = 782.00 + 30 = 812.00
+    expect(getCardValuation(78.20, "silver")).toBeCloseTo(812.00, 5);
   });
 
-  it("calcula valoración acumulada y primas de forma recursiva para nivel Oro", () => {
-    // Güler (c1): base = 27.50. Silver = 147.50. Gold = 4 * 147.50 + 50 = 590 + 50 = 640
-    expect(getCardValuation(27.50, "gold")).toBe(640.00);
-    // Bellingham (c3): base = 78.20. Silver = 421.00. Gold = 4 * 421.00 + 150 = 1684 + 150 = 1834
-    expect(getCardValuation(78.20, "gold")).toBeCloseTo(1834.00, 5);
+  it("calcula valoración acumulada y primas de forma recursiva para nivel Oro (v3.0: 8 fichas Plata + premio)", () => {
+    // Güler (c1): Silver = 285.00. Gold = 8 * 285.00 + 50 = 2280.00 + 50 = 2330.00
+    expect(getCardValuation(27.50, "gold")).toBe(2330.00);
+    // Bellingham (c3): Silver = 812.00. Gold = 8 * 812.00 + 150 = 6496.00 + 150 = 6646.00
+    expect(getCardValuation(78.20, "gold")).toBeCloseTo(6646.00, 5);
   });
 });
 
 describe("getReferralBonusPercent", () => {
-  it("retorna comisiones de referidos correctas para mercado secundario (P2P)", () => {
-    expect(getReferralBonusPercent("standard", "c1", "secondary")).toBe(0.10);
-    expect(getReferralBonusPercent("silver", "c1", "secondary")).toBe(0.15);
-    expect(getReferralBonusPercent("silver", "c3", "secondary")).toBe(0.20);
+  it("retorna comisión de referidos plana por tier (v3.0: no varía por categoría ni por mercado primario/secundario)", () => {
+    expect(getReferralBonusPercent("standard", "c1", "secondary")).toBe(0.06);
+    expect(getReferralBonusPercent("silver", "c1", "secondary")).toBe(0.14);
+    expect(getReferralBonusPercent("silver", "c3", "secondary")).toBe(0.14);
     expect(getReferralBonusPercent("legend", "c1", "secondary")).toBe(0.45);
-    expect(getReferralBonusPercent("legend", "c3", "secondary")).toBe(0.50);
+    expect(getReferralBonusPercent("legend", "c3", "secondary")).toBe(0.45);
   });
 
-  it("retorna comisiones de referidos correctas para mercado primario (IPO)", () => {
-    expect(getReferralBonusPercent("standard", "c1", "primary")).toBe(0.030);
-    expect(getReferralBonusPercent("silver", "c1", "primary")).toBe(0.035);
-    expect(getReferralBonusPercent("silver", "c3", "primary")).toBe(0.040);
-    expect(getReferralBonusPercent("legend", "c1", "primary")).toBe(0.070);
-    expect(getReferralBonusPercent("legend", "c3", "primary")).toBe(0.080);
+  it("retorna la misma comisión plana en mercado primario (IPO) -- marketType no distingue en el modelo actual", () => {
+    expect(getReferralBonusPercent("standard", "c1", "primary")).toBe(0.06);
+    expect(getReferralBonusPercent("silver", "c1", "primary")).toBe(0.14);
+    expect(getReferralBonusPercent("silver", "c3", "primary")).toBe(0.14);
+    expect(getReferralBonusPercent("legend", "c1", "primary")).toBe(0.45);
+    expect(getReferralBonusPercent("legend", "c3", "primary")).toBe(0.45);
   });
 
-  it("retorna comisiones correctas para el nivel de Socio Influencer", () => {
+  // ⚠️ El tier "influencer" de esta función está OBSOLETO y programado para
+  // reemplazo (docs/PROGRAMA_INFLUENCERS.md): el 60% aquí es sobre el monto
+  // bruto de la transacción, no sobre las fees de la plataforma, y no pasa
+  // por aprobación de admin (creator_tier). Se documenta el valor actual
+  // solo para no romper el test mientras se hace la migración -- no se debe
+  // usar como referencia de diseño.
+  it("[obsoleto, pendiente de reemplazo] retorna el valor actual del tier Influencer", () => {
     expect(getReferralBonusPercent("influencer", "c1", "primary")).toBe(0.10);
     expect(getReferralBonusPercent("influencer", "c1", "secondary")).toBe(0.60);
   });

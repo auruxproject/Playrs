@@ -179,9 +179,9 @@ export default function BetsPage() {
     randomDesc,
   );
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!selectedPlayerId && !isRandom) return;
-    const res = createBet({
+    const res = await createBet({
       playerId: selectedPlayerId || players[0].id,
       title: computedTitle,
       stake: Number(stake),
@@ -191,9 +191,9 @@ export default function BetsPage() {
     if (res.success) { closeWizard(); setActiveSubTab("mine"); }
   };
 
-  const handleAcceptClick = (betId: string) => {
+  const handleAcceptClick = async (betId: string) => {
     setBetLoading(betId);
-    const res = acceptBet(betId);
+    const res = await acceptBet(betId);
     alert(res.message);
     setBetLoading(null);
   };

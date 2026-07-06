@@ -1,8 +1,9 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { runOracle, calculateGlobalRating } from "@/lib/engine/oracle";
 import type { Position, MatchStats, Competition } from "@/lib/engine/types";
+import { useAuth } from "@/context/AuthContext";
 
 // Player Type Definition
 export interface Player {
@@ -263,15 +264,15 @@ interface StoreContextType {
   referralEarnings: number;
   selectedPlayerId: string | null;
   setSelectedPlayerId: (id: string | null) => void;
-  buyPlayer: (playerId: string) => { success: boolean; message: string };
-  sellPlayer: (cardId: string) => { success: boolean; message: string };
+  buyPlayer: (playerId: string) => Promise<{ success: boolean; message: string }>;
+  sellPlayer: (cardId: string) => Promise<{ success: boolean; message: string }>;
   listCardForSale: (cardId: string, price: number) => { success: boolean; message: string };
   cancelP2PListing: (listingId: string) => { success: boolean; message: string };
   buyP2PListing: (listingId: string) => { success: boolean; message: string };
-  createBet: (data: { playerId: string; title: string; stake: number; type: any }) => { success: boolean; message: string };
-  acceptBet: (betId: string) => { success: boolean; message: string };
-  craftGoldPlayer: (playerId: string) => { success: boolean; message: string };
-  forgeCard: (playerId: string, targetTier: "silver" | "gold" | "diamond" | "legend") => { success: boolean; message: string };
+  createBet: (data: { playerId: string; title: string; stake: number; type: any }) => Promise<{ success: boolean; message: string }>;
+  acceptBet: (betId: string) => Promise<{ success: boolean; message: string }>;
+  craftGoldPlayer: (playerId: string) => Promise<{ success: boolean; message: string }>;
+  forgeCard: (playerId: string, targetTier: "silver" | "gold" | "diamond" | "legend") => Promise<{ success: boolean; message: string }>;
   assignRetiredTeam: (cardId: string, team: string) => { success: boolean; message: string };
   depositFunds: (amount: number, method: "solana" | "cryptomus" | "card" | "crypto" | "bank") => void;
   withdrawFunds: (amount: number, method: "solana" | "cryptomus" | "crypto" | "bank" | "card") => { success: boolean; message: string };
@@ -748,6 +749,21 @@ const INITIAL_P2P_LISTINGS: P2PListing[] = [
 ];
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { authenticated, profile, getToken, refreshProfile } = useAuth();
+
+  // Llama a un endpoint autenticado con el token real de Web3Auth.
+  const authFetch = useCallback(async (path: string, body?: unknown) => {
+    const token = await getToken();
+    if (!token) return { ok: false, data: { error: "Debes iniciar sesión para hacer esto" } };
+    const res = await fetch(path, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, data };
+  }, [getToken]);
+
   // State Initialization
   const [balance, setBalance] = useState<number>(1247.50);
   const [depositedTotal, setDepositedTotal] = useState<number>(50.0);
@@ -789,6 +805,74 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setUserTier(highest);
   }, [userCards]);
 
+  // Balance real: mientras haya sesión, el saldo mostrado es el del perfil en Supabase
+  // (fuente de verdad server-side), no el estado local simulado.
+  useEffect(() => {
+    if (authenticated && profile) {
+      setBalance(profile.balance_usdc);
+    }
+  }, [authenticated, profile]);
+
+  // Fichas reales del usuario (reemplaza el inventario de demo una vez hay sesión).
+  const loadRealCards = useCallback(async () => {
+    const token = await getToken();
+    if (!token) return;
+    try {
+      const res = await fetch("/api/cards", { headers: { authorization: `Bearer ${token}` } });
+      if (!res.ok) return;
+      const rows: any[] = await res.json();
+      setUserCards(rows.map((r) => ({
+        id: r.id,
+        playerId: r.player_id,
+        isGold: r.tier === "gold",
+        tier: r.tier,
+        acquiredPrice: r.acquired_price,
+        acquiredAt: r.acquired_at,
+        serialNumber: r.serial_number,
+        retiredAssignedTeam: r.retired_team ?? undefined,
+        retiredFreeAssignmentUsed: r.retired_free_used ?? undefined,
+      })));
+    } catch (err) {
+      console.error("loadRealCards error:", err);
+    }
+  }, [getToken]);
+
+  // Duelos reales abiertos (endpoint público, no requiere sesión para listar).
+  const loadRealDuels = useCallback(async () => {
+    try {
+      const res = await fetch("/api/duels?status=open");
+      if (!res.ok) return;
+      const { duels: rows }: { duels: any[] } = await res.json();
+      setBets(rows.map((r) => ({
+        id: r.id,
+        title: r.title,
+        creator: r.creator_id?.slice(0, 8) ?? "Usuario",
+        playerId: r.player_id,
+        playerTicker: players.find((p) => p.id === r.player_id)?.ticker ?? r.player_id,
+        stake: r.stake_usdc,
+        pool: r.pool_usdc,
+        type: r.bet_type,
+        status: r.status,
+        resolvedAt: r.resolved_at ?? undefined,
+      })));
+    } catch (err) {
+      console.error("loadRealDuels error:", err);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (authenticated) {
+      loadRealCards();
+    } else {
+      setUserCards([]);
+    }
+  }, [authenticated, loadRealCards]);
+
+  useEffect(() => {
+    loadRealDuels();
+  }, [loadRealDuels]);
+
   // Real-time fluctuating price generator simulation.
   useEffect(() => {
     const timer = setInterval(() => {
@@ -819,104 +903,65 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => clearInterval(timer);
   }, []);
 
-  // Action: Buy Player in IPO
-  const buyPlayer = (playerId: string) => {
+  // Action: Buy Player in IPO — el servidor recalcula precio/stock/balance, nunca se confía en el cliente.
+  const buyPlayer = async (playerId: string) => {
     const player = players.find(p => p.id === playerId);
     if (!player) return { success: false, message: "Jugador no encontrado" };
-    
-    if (player.isFrozen) {
-      return { success: false, message: "Este mercado se encuentra cerrado temporalmente por partido en vivo (Match Lock)" };
-    }
 
-    if (player.stockRemaining <= 0) {
-      return { success: false, message: "Fichas agotadas en IPO" };
-    }
+    const { ok, data } = await authFetch("/api/cards/buy", { player_id: playerId });
+    if (!ok) return { success: false, message: data.error ?? "Error al procesar la compra" };
 
-    if (balance < player.price) {
-      return { success: false, message: "Saldo USDC insuficiente para comprar esta ficha" };
-    }
-
-    // Process Purchase
-    const cost = player.price;
-    setBalance(prev => Number((prev - cost).toFixed(2)));
-    
-    // Decrease stock
     setPlayers(prev => prev.map(p => p.id === playerId ? { ...p, stockRemaining: p.stockRemaining - 1 } : p));
-    
-    // Add User Card
-    const newCard: UserCard = {
-      id: `card-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    setUserCards(prev => [...prev, {
+      id: data.cardId,
       playerId,
       isGold: false,
       tier: "standard",
-      acquiredPrice: player.price,
+      acquiredPrice: data.pricePaid,
       acquiredAt: new Date().toISOString(),
-      serialNumber: player.stockTotal - player.stockRemaining + 1,
-    };
-    
-    setUserCards(prev => [...prev, newCard]);
-
-    // Save transaction
+      serialNumber: data.serialNumber,
+    }]);
     setTransactions(prev => [
       {
         id: `tx-${Date.now()}`,
         type: "Compra IPO",
-        amount: -cost,
+        amount: -data.pricePaid,
         description: `Adquisición de ficha ${player.ticker}`,
         timestamp: new Date().toISOString(),
         status: "success"
       },
       ...prev
     ]);
+    await refreshProfile();
 
-    return { success: true, message: `Has comprado 1 ficha de ${player.name} por ${cost.toFixed(2)} USDC` };
+    return { success: true, message: `Has comprado 1 ficha de ${player.name} por ${data.pricePaid.toFixed(2)} USDC` };
   };
 
-  // Action: Sell Player (Instant Quick Sell to platform)
-  const sellPlayer = (cardId: string) => {
-    const cardIndex = userCards.findIndex(c => c.id === cardId);
-    if (cardIndex === -1) return { success: false, message: "Ficha no encontrada en tu inventario" };
-
-    const card = userCards[cardIndex];
+  // Action: Sell Player (Instant Quick Sell to platform) — venta/comisión recalculadas en el servidor.
+  const sellPlayer = async (cardId: string) => {
+    const card = userCards.find(c => c.id === cardId);
+    if (!card) return { success: false, message: "Ficha no encontrada en tu inventario" };
     const player = players.find(p => p.id === card.playerId);
-    if (!player) return { success: false, message: "Jugador de la ficha no existe" };
-
-    if (player.isFrozen) {
-      return { success: false, message: "Este mercado está bloqueado temporalmente (Match Lock)" };
-    }
-
     const cardTier = card.tier || (card.isGold ? "gold" : "standard");
-    const category = getPlayerCategory(player.price);
-    
-    // In Instant Sell to platform, the platform buys at the cumulative card valuation,
-    // and the transaction fee is determined by the 5x5 benefits matrix.
-    let sellingPrice = getCardValuation(player.price, cardTier);
-    const feePercent = getP2PVolumeFeePercent(cardTier, category);
-    const fee = Number((sellingPrice * feePercent).toFixed(2));
-    const finalAmount = Number((sellingPrice - fee).toFixed(2));
 
-    // Remove Card
+    const { ok, data } = await authFetch("/api/cards/sell", { card_id: cardId });
+    if (!ok) return { success: false, message: data.error ?? "Error al procesar la venta" };
+
     setUserCards(prev => prev.filter(c => c.id !== cardId));
-    
-    // Add Balance
-    setBalance(prev => Number((prev + finalAmount).toFixed(2)));
-
-    const tierLabel = cardTier.toUpperCase();
-
-    // Save Transaction
     setTransactions(prev => [
       {
         id: `tx-${Date.now()}`,
         type: "Venta Ficha",
-        amount: finalAmount,
-        description: `Venta de ficha ${player.ticker} (${tierLabel}) (Comisión: ${fee.toFixed(2)} USDC)`,
+        amount: data.finalAmount,
+        description: `Venta de ficha ${player?.ticker ?? card.playerId} (${cardTier.toUpperCase()}) (Comisión: ${data.fee.toFixed(2)} USDC)`,
         timestamp: new Date().toISOString(),
         status: "success"
       },
       ...prev
     ]);
+    await refreshProfile();
 
-    return { success: true, message: `Ficha vendida por ${finalAmount.toFixed(2)} USDC` };
+    return { success: true, message: `Ficha vendida por ${data.finalAmount.toFixed(2)} USDC` };
   };
  
   // Action: List card for P2P sale
@@ -1059,253 +1104,130 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { success: true, message: `Has comprado la ficha de ${player.name} por ${cost.toFixed(2)} USDC` };
   };
 
-  // Action: Create bet
-  const createBet = (data: { playerId: string; title: string; stake: number; type: any }) => {
+  // Action: Create duel/bet — atómico en el servidor (descuenta stake, crea el duelo).
+  const createBet = async (data: { playerId: string; title: string; stake: number; type: any }) => {
     const player = players.find(p => p.id === data.playerId);
     if (!player) return { success: false, message: "Jugador no encontrado" };
 
-    if (player.isFrozen) {
-      return { success: false, message: "No puedes apostar por un jugador congelado por Match Lock" };
-    }
-
-    if (balance < data.stake) {
-      return { success: false, message: "Saldo USDC insuficiente para crear este reto" };
-    }
-
-    const platformFee = 1.00; // 1 USDC Fee
-    const finalStake = data.stake;
-
-    setBalance(prev => Number((prev - (finalStake + platformFee)).toFixed(2)));
-
-    const newBet: BetChallenge = {
-      id: `bet-${Date.now()}`,
+    const { ok, data: res } = await authFetch("/api/duels", {
+      player_id: data.playerId,
       title: data.title,
-      creator: "Usuario123",
+      bet_type: data.type,
+      stake: data.stake,
+    });
+    if (!ok) return { success: false, message: res.error ?? "Error al crear el duelo" };
+
+    setBets(prev => [{
+      id: res.betId,
+      title: data.title,
+      creator: "Tú",
       creatorAvatar: "👤",
       playerId: data.playerId,
       playerTicker: player.ticker,
       stake: data.stake,
-      pool: data.stake * 2,
+      pool: data.stake,
       type: data.type,
-      status: "open"
-    };
-
-    setBets(prev => [newBet, ...prev]);
-
+      status: "open",
+    }, ...prev]);
     setTransactions(prev => [
       {
         id: `tx-${Date.now()}`,
-        type: "Reto Creado",
-        amount: -(finalStake + platformFee),
-        description: `Creación de reto: "${data.title}" (Fee: 1.00 USDC)`,
+        type: "Duelo Creado",
+        amount: -data.stake,
+        description: `Creación de duelo: "${data.title}"`,
         timestamp: new Date().toISOString(),
         status: "success"
       },
       ...prev
     ]);
+    await refreshProfile();
 
-    return { success: true, message: `Reto "${data.title}" creado con éxito` };
+    return { success: true, message: `Duelo "${data.title}" creado con éxito` };
   };
 
-  // Action: Accept Bet Challenge
-  const acceptBet = (betId: string) => {
+  // Action: Accept Duel — atómico en el servidor (descuenta stake, marca 'accepted').
+  // NOTA: la resolución (quién gana, rake, pago) NO está implementada todavía --
+  // requiere conectar el resultado real del oráculo (ver docs/state/backend.md).
+  // Antes se simulaba con Math.random() tras 10s; se quitó porque ahora mueve
+  // dinero real y no se puede fingir un resultado.
+  const acceptBet = async (betId: string) => {
     const bet = bets.find(b => b.id === betId);
-    if (!bet) return { success: false, message: "Apuesta no encontrada" };
+    if (!bet) return { success: false, message: "Duelo no encontrado" };
 
-    if (bet.status !== "open") return { success: false, message: "Esta apuesta ya no está activa" };
+    const { ok, data } = await authFetch(`/api/duels/${betId}/accept`);
+    if (!ok) return { success: false, message: data.error ?? "Error al aceptar el duelo" };
 
-    const player = players.find(p => p.id === bet.playerId);
-    if (player?.isFrozen) {
-      return { success: false, message: "Este jugador está congelado por Match Lock" };
-    }
-
-    if (balance < bet.stake) {
-      return { success: false, message: "Saldo USDC insuficiente para aceptar este reto" };
-    }
-
-    // Deduct stake from wallet
-    setBalance(prev => Number((prev - bet.stake).toFixed(2)));
-
-    // Update Bet Challenge
-    setBets(prev => prev.map(b => b.id === betId ? { ...b, status: "accepted" as const } : b));
-
+    setBets(prev => prev.map(b => b.id === betId ? { ...b, status: "accepted" as const, pool: data.poolUsdc } : b));
     setTransactions(prev => [
       {
         id: `tx-${Date.now()}`,
-        type: "Reto Aceptado",
+        type: "Duelo Aceptado",
         amount: -bet.stake,
-        description: `Aceptaste el reto de @${bet.creator}: "${bet.title}"`,
+        description: `Aceptaste el duelo: "${bet.title}"`,
         timestamp: new Date().toISOString(),
         status: "success"
       },
       ...prev
     ]);
+    await refreshProfile();
 
-    // Simulate match completion after 10 seconds
-    setTimeout(() => {
-      const isWinner = Math.random() > 0.45; // 55% chance of winning
-      setBets(prevBets => 
-        prevBets.map(b => {
-          if (b.id === betId) {
-            // Fee depends on whether the winner holds a token for this player:
-            // - No token: 18% (standard) → 8% (legend), decreasing by tier
-            // - Holds token: tier-based fee (5% standard, less for higher tiers)
-            const ownedCardsForPlayer = userCards.filter(c => c.playerId === b.playerId);
-            const ownsPlayer = ownedCardsForPlayer.length > 0;
-            let rakeFeePercent: number;
-
-            if (!ownsPlayer) {
-              // No-token fee: determine by user's highest owned tier overall
-              const allTiers = userCards.map(c => c.tier || (c.isGold ? "gold" : "standard"));
-              const tierOrder = { standard: 0, silver: 1, gold: 2, diamond: 3, legend: 4 };
-              const userHighestTier = allTiers.reduce<"standard"|"silver"|"gold"|"diamond"|"legend">((best, t) => {
-                return (tierOrder[t as keyof typeof tierOrder] ?? 0) > tierOrder[best] ? t as any : best;
-              }, "standard");
-              const noTokenFees = { standard: 0.18, silver: 0.15, gold: 0.12, diamond: 0.10, legend: 0.08 };
-              rakeFeePercent = noTokenFees[userHighestTier];
-            } else {
-              let highestTier: "standard" | "silver" | "gold" | "diamond" | "legend" = "standard";
-              const tierOrder = { standard: 0, silver: 1, gold: 2, diamond: 3, legend: 4 };
-              ownedCardsForPlayer.forEach(c => {
-                const t = c.tier || (c.isGold ? "gold" : "standard");
-                if (tierOrder[t] > tierOrder[highestTier]) {
-                  highestTier = t;
-                }
-              });
-              const matchingPlayer = players.find(p => p.id === b.playerId);
-              const category = matchingPlayer ? getPlayerCategory(matchingPlayer.price) : "c1";
-              rakeFeePercent = getBetFeePercent(highestTier, category);
-            }
-            
-            const reward = Number((b.pool * (1 - rakeFeePercent)).toFixed(2));
-            const rakeUSDC = Number((b.pool * rakeFeePercent).toFixed(2));
-
-            if (isWinner) {
-              setBalance(bal => Number((bal + reward).toFixed(2)));
-              setTransactions(txs => [
-                {
-                  id: `tx-win-${Date.now()}`,
-                  type: "Reto Ganado 🏆",
-                  amount: reward,
-                  description: `Ganaste el reto: "${b.title}" contra @${b.creator} (Comisión Rake: ${rakeUSDC} USDC [${(rakeFeePercent*100).toFixed(1)}%])`,
-                  timestamp: new Date().toISOString(),
-                  status: "success"
-                },
-                ...txs
-              ]);
-              return { ...b, status: "won" as const, resolvedAt: new Date().toISOString() };
-            } else {
-              setTransactions(txs => [
-                {
-                  id: `tx-loss-${Date.now()}`,
-                  type: "Reto Perdido ❌",
-                  amount: 0,
-                  description: `Perdiste el reto: "${b.title}" contra @${b.creator}`,
-                  timestamp: new Date().toISOString(),
-                  status: "success"
-                },
-                ...txs
-              ]);
-              return { ...b, status: "lost" as const, resolvedAt: new Date().toISOString() };
-            }
-          }
-          return b;
-        })
-      );
-    }, 10000);
-
-    return { success: true, message: `Reto aceptado. El pozo se resolverá pronto.` };
+    return { success: true, message: "Duelo aceptado. La resolución llegará cuando el partido termine." };
   };
 
-  // Action: Forge Card (Multi-tier upgrade system)
-  const forgeCard = (
+  // Action: Forge Card (Multi-tier upgrade system) — atómico en el servidor
+  // (verifica fichas origen reales, las quema, cobra el fee y crea la nueva ficha).
+  const forgeCard = async (
     playerId: string,
     targetTier: "silver" | "gold" | "diamond" | "legend"
   ) => {
     const player = players.find(p => p.id === playerId);
     if (!player) return { success: false, message: "Jugador no existe" };
 
-    if (player.isFrozen) {
-      return { success: false, message: "No puedes forjar fichas de un jugador congelado por Match Lock" };
-    }
-
-    const category = getPlayerCategory(player.price);
-    const { cards: cardsRequired, fee: usdcFee } = getForgeRequirements(targetTier, category);
-
-    // Determine the source tier required to forge to the target tier
-    const sourceTier: "standard" | "silver" | "gold" | "diamond" = 
+    const sourceTier: "standard" | "silver" | "gold" | "diamond" =
       targetTier === "silver" ? "standard" :
       targetTier === "gold" ? "silver" :
       targetTier === "diamond" ? "gold" : "diamond";
-
-    // Find cards of the required source tier
-    const matchingSourceCards = userCards.filter(
-      c => c.playerId === playerId && (c.tier || (c.isGold ? "gold" : "standard")) === sourceTier
-    );
-
-    if (matchingSourceCards.length < cardsRequired) {
-      const sourceName = sourceTier === "standard" ? "Estándar" : sourceTier === "silver" ? "Plata" : sourceTier === "gold" ? "Oro" : "Diamante";
-      const targetName = targetTier === "silver" ? "Plata" : targetTier === "gold" ? "Oro" : targetTier === "diamond" ? "Diamante" : "Leyenda";
-      return {
-        success: false,
-        message: `Necesitas al menos ${cardsRequired} fichas ${sourceName} de ${player.name} para forjar una versión ${targetName}. Actualmente tienes ${matchingSourceCards.length}.`
-      };
-    }
-
-    if (balance < usdcFee) {
-      return {
-        success: false,
-        message: `Saldo insuficiente. Necesitas ${usdcFee.toFixed(2)} USDC para el fee de forja hacia ${targetTier.toUpperCase()}.`
-      };
-    }
-
-    // Collect card IDs to destroy
-    const cardsToDestroy = matchingSourceCards.slice(0, cardsRequired);
-    const cardIdsToDestroy = cardsToDestroy.map(c => c.id);
-    const bestSerialNumber = Math.min(...cardsToDestroy.map(c => c.serialNumber || 1));
-
-    // Filter out destroyed cards
-    setUserCards(prev => prev.filter(c => !cardIdsToDestroy.includes(c.id)));
-
-    // Apply the one-time multiplier to the acquired price
-    const multiplier = getTierPriceMultiplier(targetTier, category, player.price);
-    const forgedAcquiredPrice = Number((player.price * multiplier).toFixed(2));
-
     const targetName = targetTier === "silver" ? "Plata" : targetTier === "gold" ? "Oro" : targetTier === "diamond" ? "Diamante" : "Leyenda";
-    const forgedCard: UserCard = {
-      id: `card-${targetTier}-${Date.now()}`,
-      playerId,
-      isGold: targetTier === "gold",
-      tier: targetTier,
-      acquiredPrice: forgedAcquiredPrice,
-      acquiredAt: new Date().toISOString(),
-      serialNumber: bestSerialNumber,
-    };
 
-    setUserCards(prev => [...prev, forgedCard]);
+    const { ok, data } = await authFetch("/api/cards/forge", { player_id: playerId, target_tier: targetTier });
+    if (!ok) return { success: false, message: data.error ?? "Error al procesar la forja" };
 
-    // Adjust balance of usdcFee
-    setBalance(prev => Number((prev - usdcFee).toFixed(2)));
-
-    // Update Player stats slightly (+1 on streak)
+    // Quita las fichas origen quemadas (las más antiguas primero, igual que decide el servidor)
+    setUserCards(prev => {
+      const sourceCards = prev
+        .filter(c => c.playerId === playerId && (c.tier || (c.isGold ? "gold" : "standard")) === sourceTier)
+        .sort((a, b) => a.serialNumber - b.serialNumber);
+      const burnedIds = new Set(sourceCards.slice(0, data.cardsBurned).map(c => c.id));
+      return [
+        ...prev.filter(c => !burnedIds.has(c.id)),
+        {
+          id: data.newCardId,
+          playerId,
+          isGold: targetTier === "gold",
+          tier: targetTier,
+          acquiredPrice: player.price,
+          acquiredAt: new Date().toISOString(),
+          serialNumber: data.serialNumber,
+        },
+      ];
+    });
     setPlayers(prev => prev.map(p => p.id === playerId ? { ...p, streak: p.streak + 1 } : p));
-
-    // Save transaction
     setTransactions(prev => [
       {
         id: `tx-forge-${Date.now()}`,
         type: `Forja a ${targetName} ✨`,
-        amount: -usdcFee,
-        description: `Forja de ${player.ticker} ${targetName.toUpperCase()} quemando ${cardsRequired} fichas ${sourceTier.toUpperCase()} + ${usdcFee} USDC de fee`,
+        amount: -data.feePaid,
+        description: `Forja de ${player.ticker} ${targetName.toUpperCase()} quemando ${data.cardsBurned} fichas ${sourceTier.toUpperCase()} + ${data.feePaid} USDC de fee`,
         timestamp: new Date().toISOString(),
         status: "success"
       },
       ...prev
     ]);
+    await refreshProfile();
 
     return {
       success: true,
-      message: `¡FORJA EXITOSA! Has creado 1 ficha ${player.ticker} ${targetName.toUpperCase()} S/N #${bestSerialNumber} en tu portafolio.`
+      message: `¡FORJA EXITOSA! Has creado 1 ficha ${player.ticker} ${targetName.toUpperCase()} S/N #${data.serialNumber} en tu portafolio.`
     };
   };
 

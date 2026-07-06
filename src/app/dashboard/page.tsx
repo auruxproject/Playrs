@@ -46,7 +46,7 @@ export default function Dashboard() {
 
   const handleAcceptBet = async (betId: string) => {
     setBetLoading(betId);
-    const res = acceptBet(betId);
+    const res = await acceptBet(betId);
     alert(res.message);
     setBetLoading(null);
   };

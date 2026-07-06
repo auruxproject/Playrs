@@ -188,13 +188,13 @@ function MarketPageContent() {
     return matchesSearch && matchesLeague && matchesPosition;
   });
 
-  const handleBuy = (playerId: string) => {
-    const res = buyPlayer(playerId);
+  const handleBuy = async (playerId: string) => {
+    const res = await buyPlayer(playerId);
     alert(res.message);
   };
 
-  const handleSell = (cardId: string) => {
-    const res = sellPlayer(cardId);
+  const handleSell = async (cardId: string) => {
+    const res = await sellPlayer(cardId);
     alert(res.message);
   };
 

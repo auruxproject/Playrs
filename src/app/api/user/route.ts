@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrivyClient } from "@privy-io/server-auth";
+import { verifyAuthToken } from "@/lib/auth-server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { recordUserCall } from "@/lib/diag";
 
-const privy = new PrivyClient(
-  process.env.NEXT_PUBLIC_PRIVY_APP_ID!,
-  process.env.PRIVY_APP_SECRET!
-);
-
-// Obtiene o crea el perfil del usuario autenticado con Privy
+// Obtiene o crea el perfil del usuario autenticado con Web3Auth
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   if (!authHeader?.startsWith("Bearer ")) {
@@ -20,8 +15,7 @@ export async function GET(req: NextRequest) {
 
   let privyDid: string;
   try {
-    const claims = await privy.verifyAuthToken(token);
-    privyDid = claims.userId;
+    privyDid = await verifyAuthToken(token);
   } catch (e) {
     recordUserCall("verify-token", false, e instanceof Error ? e.message : String(e));
     return NextResponse.json({ error: "Token inválido" }, { status: 401 });
@@ -60,6 +54,17 @@ export async function GET(req: NextRequest) {
   }
 }
 
+const USERNAME_ERROR_STATUS: Record<string, number> = {
+  profile_not_found: 404,
+  username_change_too_soon: 403,
+  username_taken: 409,
+};
+const USERNAME_ERROR_MESSAGE: Record<string, string> = {
+  profile_not_found: "Perfil no encontrado",
+  username_change_too_soon: "Solo puedes cambiar tu nombre de usuario una vez cada 365 días",
+  username_taken: "Ese nombre de usuario ya está en uso",
+};
+
 // Actualiza el perfil (username, avatar, wallet_address)
 export async function PATCH(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
@@ -71,9 +76,43 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json();
 
   try {
-    const claims = await privy.verifyAuthToken(token);
+    const userId = await verifyAuthToken(token);
 
-    const allowed = ["username", "avatar_emoji", "wallet_address"];
+    // El cambio de username pasa por la política de 1 cambio/año, validada
+    // atómicamente en el servidor (nunca solo en el cliente).
+    if ("username" in body) {
+      const { data, error } = await supabaseAdmin.rpc("process_username_change", {
+        p_privy_did: userId,
+        p_new_username: body.username,
+      });
+
+      if (error) {
+        const code = error.message as string;
+        const status = USERNAME_ERROR_STATUS[code] ?? 500;
+        return NextResponse.json({ error: USERNAME_ERROR_MESSAGE[code] ?? "Error al cambiar el username" }, { status });
+      }
+
+      // Si además vienen avatar/wallet en el mismo body, se aplican aparte (sin restricción).
+      const rest = ["avatar_emoji", "wallet_address"];
+      const restUpdate: Record<string, unknown> = {};
+      for (const key of rest) {
+        if (key in body) restUpdate[key] = body[key];
+      }
+      if (Object.keys(restUpdate).length > 0) {
+        const { data: updated, error: restError } = await supabaseAdmin
+          .from("profiles")
+          .update(restUpdate)
+          .eq("privy_did", userId)
+          .select()
+          .single();
+        if (restError) return NextResponse.json({ error: restError.message }, { status: 500 });
+        return NextResponse.json(updated);
+      }
+
+      return NextResponse.json(data);
+    }
+
+    const allowed = ["avatar_emoji", "wallet_address"];
     const update: Record<string, unknown> = {};
     for (const key of allowed) {
       if (key in body) update[key] = body[key];
@@ -82,7 +121,7 @@ export async function PATCH(req: NextRequest) {
     const { data, error } = await supabaseAdmin
       .from("profiles")
       .update(update)
-      .eq("privy_did", claims.userId)
+      .eq("privy_did", userId)
       .select()
       .single();
 

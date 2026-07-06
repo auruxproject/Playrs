@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrivyClient } from "@privy-io/server-auth";
+import { verifyAuthToken } from "@/lib/auth-server";
 import { supabaseAdmin } from "@/lib/supabase";
-
-const privy = new PrivyClient(
-  process.env.NEXT_PUBLIC_PRIVY_APP_ID!,
-  process.env.PRIVY_APP_SECRET!
-);
 
 // GET /api/cards — lista las fichas del usuario autenticado (con datos del jugador)
 export async function GET(req: NextRequest) {
@@ -15,12 +10,12 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const claims = await privy.verifyAuthToken(authHeader.split(" ")[1]);
+    const userId = await verifyAuthToken(authHeader.split(" ")[1]);
 
     const { data: profile } = await supabaseAdmin
       .from("profiles")
       .select("id")
-      .eq("privy_did", claims.userId)
+      .eq("privy_did", userId)
       .single();
 
     if (!profile) return NextResponse.json([], { status: 200 });

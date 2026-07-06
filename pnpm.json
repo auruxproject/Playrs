@@ -3,7 +3,9 @@
     "@reown/appkit",
     "bufferutil",
     "keccak",
+    "protobufjs",
     "sharp",
+    "tiny-secp256k1",
     "unrs-resolver",
     "utf-8-validate"
   ]

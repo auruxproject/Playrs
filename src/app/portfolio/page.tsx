@@ -90,8 +90,8 @@ export default function PortfolioPage() {
     return new Date(b.acquiredAt).getTime() - new Date(a.acquiredAt).getTime();
   });
 
-  const handleSellClick = (cardId: string) => {
-    const res = sellPlayer(cardId);
+  const handleSellClick = async (cardId: string) => {
+    const res = await sellPlayer(cardId);
     alert(res.message);
     setFocusedCardId(null);
   };
@@ -99,9 +99,9 @@ export default function PortfolioPage() {
   const handleForgeClick = () => {
     setIsForging(true);
 
-    // Simulate premium forging animation
-    setTimeout(() => {
-      const res = forgeCard(selectedForgePlayerId, targetForgeTier);
+    // Simulate premium forging animation (visual delay); la forja real se confirma en el servidor.
+    setTimeout(async () => {
+      const res = await forgeCard(selectedForgePlayerId, targetForgeTier);
       setIsForging(false);
 
       if (res.success) {

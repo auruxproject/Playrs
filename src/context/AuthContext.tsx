@@ -1,7 +1,8 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { usePrivy } from "@privy-io/react-auth";
+import { useWeb3Auth, useWeb3AuthConnect, useWeb3AuthDisconnect, useWeb3AuthUser, useAuthTokenInfo } from "@web3auth/modal/react";
+import { useSolanaWallet } from "@web3auth/modal/react/solana";
 
 export interface Profile {
   id: string;
@@ -27,44 +28,37 @@ interface AuthContextType {
   login: () => void;
   logout: () => void;
   refreshProfile: () => Promise<void>;
+  /** Token de sesión de Web3Auth para llamar endpoints autenticados (Authorization: Bearer). */
+  getToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const {
-    ready,
-    authenticated,
-    user,
-    login,
-    logout,
-    getAccessToken,
-  } = usePrivy();
+  const { isInitialized } = useWeb3Auth();
+  const { isConnected, connect } = useWeb3AuthConnect();
+  const { disconnect } = useWeb3AuthDisconnect();
+  const { userInfo, getUserInfo } = useWeb3AuthUser();
+  const { getAuthTokenInfo } = useAuthTokenInfo();
+  const { accounts } = useSolanaWallet();
+
+  const ready = isInitialized;
+  const walletAddress = accounts?.[0] ?? null;
+  const email = userInfo?.email ?? null;
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Solana embedded wallet address (creada automáticamente por Privy al hacer login)
-  const walletAddress =
-    user?.wallet?.address ??
-    (user?.linkedAccounts?.find(
-      (a) => a.type === "wallet" && (a as { chainType?: string }).chainType === "solana"
-    ) as { address?: string } | undefined)?.address ??
-    null;
-
-  const email =
-    user?.email?.address ??
-    (user?.google?.email ?? null);
-
-  // Obtiene o crea el perfil del usuario en Supabase usando el token de Privy
+  // Obtiene o crea el perfil del usuario en Supabase usando el idToken de Web3Auth
   const syncProfile = useCallback(async () => {
-    if (!authenticated) {
+    if (!isConnected) {
       setProfile(null);
       return;
     }
     setLoading(true);
     try {
-      const token = await getAccessToken();
+      await getUserInfo();
+      const token = await getAuthTokenInfo();
       if (!token) return;
 
       const res = await fetch("/api/user", {
@@ -77,7 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const data: Profile = await res.json();
       setProfile(data);
 
-      // Si Privy ya creó la wallet y aún no está guardada en el perfil, la guardamos
+      // Si Web3Auth ya generó la wallet Solana y aún no está guardada en el perfil, la guardamos
       if (walletAddress && data.wallet_address !== walletAddress) {
         const patchRes = await fetch("/api/user", {
           method: "PATCH",
@@ -91,28 +85,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setLoading(false);
     }
-  }, [authenticated, getAccessToken, walletAddress]);
+  }, [isConnected, getUserInfo, getAuthTokenInfo, walletAddress]);
 
   useEffect(() => {
-    if (ready && authenticated) {
+    if (ready && isConnected) {
       syncProfile();
-    } else if (ready && !authenticated) {
+    } else if (ready && !isConnected) {
       setProfile(null);
     }
-  }, [ready, authenticated, syncProfile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, isConnected]);
 
   return (
     <AuthContext.Provider
       value={{
         ready,
-        authenticated,
+        authenticated: isConnected,
         loading,
         profile,
         walletAddress,
         email,
-        login,
-        logout,
+        login: () => {
+          void connect();
+        },
+        logout: () => {
+          void disconnect();
+        },
         refreshProfile: syncProfile,
+        getToken: getAuthTokenInfo,
       }}
     >
       {children}

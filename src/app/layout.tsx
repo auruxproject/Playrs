@@ -5,7 +5,7 @@ import { StoreProvider } from "@/context/StoreContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { UserProfileModal } from "@/components/layout/UserProfileModal";
-import { AppPrivyProvider } from "@/providers/PrivyProvider";
+import { Web3AuthAppProvider } from "@/providers/Web3AuthAppProvider";
 import { AuthProvider } from "@/context/AuthContext";
 
 const geistSans = Geist({
@@ -35,7 +35,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased light`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground" suppressHydrationWarning>
-        <AppPrivyProvider>
+        <Web3AuthAppProvider>
           <AuthProvider>
             <ThemeProvider>
               <LanguageProvider>
@@ -46,7 +46,7 @@ export default function RootLayout({
               </LanguageProvider>
             </ThemeProvider>
           </AuthProvider>
-        </AppPrivyProvider>
+        </Web3AuthAppProvider>
       </body>
     </html>
   );
