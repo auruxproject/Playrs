@@ -14,8 +14,24 @@ const solanaChainConfig = {
   logo: "https://images.web3auth.io/solana.svg",
 };
 
+// El SDK de Web3Auth valida el clientId al construirse (incluso durante el
+// prerenderizado en servidor de Next.js) y lanza una excepción si está vacío,
+// lo que tumbaría el build ENTERO del sitio, no solo el login. Se usa un
+// placeholder como respaldo para que el build nunca se caiga por esto -- si
+// falta la variable real, el login simplemente fallará en el navegador con
+// un error claro ("Project not found"), en vez de dejar toda la app sin
+// desplegar. Ver docs/ESTADO_PROYECTO_TECNICO.md.
+const clientId = process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID || "BPLACEHOLDER_MISSING_CLIENT_ID";
+
+if (!process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID) {
+  console.warn(
+    "[web3authConfig] NEXT_PUBLIC_WEB3AUTH_CLIENT_ID no está configurada -- " +
+    "el login no funcionará hasta que se agregue en las variables de entorno."
+  );
+}
+
 const web3AuthOptions: Web3AuthOptions = {
-  clientId: process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID || "",
+  clientId,
   web3AuthNetwork: isMainnet ? WEB3AUTH_NETWORK.SAPPHIRE_MAINNET : WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
   chains: [solanaChainConfig],
   defaultChainId: solanaChainConfig.chainId,
