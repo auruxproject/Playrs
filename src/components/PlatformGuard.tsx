@@ -23,8 +23,13 @@ export function PlatformGuard({ children }: { children: React.ReactNode }) {
   const { ready, authenticated } = useAuth();
 
   useEffect(() => {
-    if (ready && !authenticated && isProtected(pathname)) {
+    if (!ready) return;
+    if (!authenticated && isProtected(pathname)) {
       router.replace("/");
+    } else if (authenticated && pathname === "/") {
+      // El login es async (abre un modal); una vez se confirma, la app debe
+      // llevar al usuario a la plataforma sin que tenga que hacer clic de nuevo.
+      router.replace("/dashboard");
     }
   }, [ready, authenticated, pathname, router]);
 
