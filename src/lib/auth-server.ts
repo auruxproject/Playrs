@@ -1,21 +1,45 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
-// JWKS de Web3Auth para verificar el idToken emitido tras el login.
-// Ver docs/AUTENTICACION_WALLETS_KYC.md — migración desde Privy.
-const JWKS = createRemoteJWKSet(new URL("https://api-auth.web3auth.io/.well-known/jwks.json"));
+// JWKS de Web3Auth (MetaMask Embedded Wallets) para verificar el idToken de
+// social login. La URL correcta es /jwks (NO /.well-known/jwks.json).
+// Ver docs/AUTENTICACION_WALLETS_KYC.md y la doc oficial de "Identity Token".
+const JWKS = createRemoteJWKSet(new URL("https://api-auth.web3auth.io/jwks"));
+
+// Client ID (público) — usado para validar el claim `aud` del token, evitando
+// que un token emitido para OTRO proyecto Web3Auth se acepte en el nuestro.
+const CLIENT_ID = process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID;
 
 export class AuthTokenError extends Error {}
 
 /**
- * Verifica el idToken JWT emitido por Web3Auth y devuelve el identificador
- * estable del usuario (claim `sub`), equivalente a `claims.userId` de Privy.
+ * Verifica el idToken JWT de social login de Web3Auth y devuelve un
+ * identificador ESTABLE y ÚNICO del usuario.
+ *
+ * Los tokens de Web3Auth NO traen un claim `sub` estándar: el usuario se
+ * identifica por `userId` (id del verificador) y por `wallets[].public_key`
+ * (app-scoped, no falsificable entre proyectos). Se valida issuer + audience
+ * + algoritmo ES256 antes de confiar en cualquier claim.
  */
 export async function verifyAuthToken(token: string): Promise<string> {
   try {
-    const { payload } = await jwtVerify(token, JWKS);
-    if (!payload.sub) throw new AuthTokenError("Token sin claim 'sub'");
-    return payload.sub;
-  } catch {
+    const { payload } = await jwtVerify(token, JWKS, {
+      algorithms: ["ES256"],
+      issuer: "https://api-auth.web3auth.io",
+      // Solo se valida audience si el Client ID está configurado en el server.
+      ...(CLIENT_ID ? { audience: CLIENT_ID } : {}),
+    });
+
+    // Identificador estable: la public_key de la wallet (app-scoped, forge-proof)
+    // es la opción más segura según la doc; se cae a `userId` como respaldo.
+    const wallets = payload.wallets as Array<{ public_key?: string; address?: string }> | undefined;
+    const walletKey = wallets?.[0]?.public_key ?? wallets?.[0]?.address;
+    const userId = (payload as { userId?: string }).userId;
+
+    const identifier = walletKey ?? userId;
+    if (!identifier) throw new AuthTokenError("Token sin identificador de usuario");
+    return identifier;
+  } catch (err) {
+    if (err instanceof AuthTokenError) throw err;
     throw new AuthTokenError("Token inválido");
   }
 }

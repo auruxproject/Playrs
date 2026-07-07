@@ -7,6 +7,7 @@ import { LanguageProvider } from "@/context/LanguageContext";
 import { UserProfileModal } from "@/components/layout/UserProfileModal";
 import { Web3AuthAppProvider } from "@/providers/Web3AuthAppProvider";
 import { AuthProvider } from "@/context/AuthContext";
+import { PlatformGuard } from "@/components/PlatformGuard";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,8 +41,10 @@ export default function RootLayout({
             <ThemeProvider>
               <LanguageProvider>
                 <StoreProvider>
-                  {children}
-                  <UserProfileModal />
+                  <PlatformGuard>
+                    {children}
+                    <UserProfileModal />
+                  </PlatformGuard>
                 </StoreProvider>
               </LanguageProvider>
             </ThemeProvider>

@@ -45,12 +45,13 @@ export function SiteHeader() {
           <span className="text-lg font-black tracking-widest uppercase text-text-primary">Playrs</span>
         </Link>
         <div className="flex items-center gap-2">
-          <Link
-            href="/market"
-            className="hidden sm:inline-block px-4 py-2 rounded-xl bg-background-secondary border border-border text-text-primary text-sm font-bold hover:border-blue/40 transition-all"
+          <button
+            onClick={() => (authenticated ? router.push("/market") : login())}
+            disabled={!ready}
+            className="hidden sm:inline-block px-4 py-2 rounded-xl bg-background-secondary border border-border text-text-primary text-sm font-bold hover:border-blue/40 transition-all cursor-pointer disabled:opacity-60"
           >
             Ver mercado
-          </Link>
+          </button>
 
           {/* Theme Toggle */}
           <button

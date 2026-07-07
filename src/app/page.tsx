@@ -75,6 +75,13 @@ export default function Landing() {
     else login();
   };
 
+  // "Ver mercado": si hay sesión entra al mercado; si no, abre el login
+  // (no se cuela a la plataforma sin cuenta).
+  const handleViewMarket = () => {
+    if (authenticated) router.push("/market");
+    else login();
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
       <SiteHeader />
@@ -104,12 +111,13 @@ export default function Landing() {
             >
               {authenticated ? "Ir a la App →" : "Jugar gratis →"}
             </button>
-            <Link
-              href="/market"
-              className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-background-secondary border border-border text-text-primary text-base font-bold hover:border-blue/40 transition-all"
+            <button
+              onClick={handleViewMarket}
+              disabled={!ready}
+              className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-background-secondary border border-border text-text-primary text-base font-bold hover:border-blue/40 transition-all cursor-pointer disabled:opacity-60"
             >
               Ver el mercado en vivo
-            </Link>
+            </button>
           </div>
           <p className="mt-4 text-xs text-text-tertiary">Sin custodia · Wallet Solana automática · Empiezas en segundos</p>
 

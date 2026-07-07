@@ -764,27 +764,27 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { ok: res.ok, data };
   }, [getToken]);
 
-  // State Initialization
-  const [balance, setBalance] = useState<number>(1247.50);
-  const [depositedTotal, setDepositedTotal] = useState<number>(50.0);
-  const [withdrawnTotal, setWithdrawnTotal] = useState<number>(0.0);
+  // State Initialization — SIN datos de demostración: el saldo/fichas/transacciones
+  // reales llegan del perfil en Supabase tras iniciar sesión. Un usuario sin sesión
+  // ve cero, no un saldo falso.
+  const [balance, setBalance] = useState<number>(0);
+  const [depositedTotal, setDepositedTotal] = useState<number>(0);
+  const [withdrawnTotal, setWithdrawnTotal] = useState<number>(0);
   const [players, setPlayers] = useState<Player[]>(INITIAL_PLAYERS);
-  const [userCards, setUserCards] = useState<UserCard[]>(INITIAL_USER_CARDS);
-  const [bets, setBets] = useState<BetChallenge[]>(INITIAL_BETS);
+  const [userCards, setUserCards] = useState<UserCard[]>([]);
+  const [bets, setBets] = useState<BetChallenge[]>([]);
   const [p2pListings, setP2pListings] = useState<P2PListing[]>(INITIAL_P2P_LISTINGS);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
 
-  const [transactions, setTransactions] = useState<any[]>([
-    { id: "tx-1", type: "Depósito (Tarjeta)", amount: 50.00, description: "Fondos iniciales depositados con tarjeta", timestamp: "2026-06-01T12:00:00Z", status: "success" },
-    { id: "tx-2", type: "Compra Ficha", amount: -94.40, description: "Compra de ficha Mbappe MBP-RM en IPO", timestamp: "2026-06-01T12:10:00Z", status: "success" }
-  ]);
+  const [transactions, setTransactions] = useState<any[]>([]);
 
-  const referralCode = "VALOR-X7K2M";
-  const referralsCount = 12;
-  const referralEarnings = 24.50;
+  // Referidos: el código real viene del perfil (autogenerado en la BD).
+  const referralCode = profile?.referral_code ?? "";
+  const referralsCount = 0;
+  const referralEarnings = 0;
 
   // Editable Profile Settings
-  const [username, setUsername] = useState<string>("Usuario123");
+  const [username, setUsername] = useState<string>("");
   const [userAvatar, setUserAvatar] = useState<string>("👤");
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
   const [isInfluencer, setIsInfluencer] = useState<boolean>(false);
@@ -805,11 +805,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setUserTier(highest);
   }, [userCards]);
 
-  // Balance real: mientras haya sesión, el saldo mostrado es el del perfil en Supabase
-  // (fuente de verdad server-side), no el estado local simulado.
+  // Datos reales del perfil (Supabase) mientras haya sesión: saldo, nombre,
+  // avatar y totales. Sin sesión, todo queda en cero/vacío (no datos falsos).
   useEffect(() => {
     if (authenticated && profile) {
-      setBalance(profile.balance_usdc);
+      setBalance(profile.balance_usdc ?? 0);
+      setDepositedTotal(profile.deposited_total ?? 0);
+      setWithdrawnTotal(profile.withdrawn_total ?? 0);
+      if (profile.username) setUsername(profile.username);
+      if (profile.avatar_emoji) setUserAvatar(profile.avatar_emoji);
+    } else if (!authenticated) {
+      setBalance(0);
+      setDepositedTotal(0);
+      setWithdrawnTotal(0);
+      setUsername("");
+      setTransactions([]);
     }
   }, [authenticated, profile]);
 
