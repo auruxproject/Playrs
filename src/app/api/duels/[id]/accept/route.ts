@@ -45,7 +45,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ betId: data.betId, poolUsdc: data.poolUsdc, newBalance: data.newBalance });
 
-  } catch {
-    return NextResponse.json({ error: "Token inválido" }, { status: 401 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Token inválido";
+    return NextResponse.json({ error: message }, { status: 401 });
   }
 }

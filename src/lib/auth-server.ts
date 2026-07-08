@@ -36,10 +36,14 @@ export async function verifyAuthToken(token: string): Promise<string> {
     const userId = (payload as { userId?: string }).userId;
 
     const identifier = walletKey ?? userId;
-    if (!identifier) throw new AuthTokenError("Token sin identificador de usuario");
+    if (!identifier) throw new AuthTokenError("Token sin identificador de usuario (sin wallets ni userId)");
     return identifier;
   } catch (err) {
     if (err instanceof AuthTokenError) throw err;
-    throw new AuthTokenError("Token inválido");
+    // TEMPORAL: se expone el motivo real (jose) para diagnosticar el 401 en
+    // producción -- no es información sensible (nombres de claims JWT), solo
+    // el porqué de la validación. Revertir a mensaje genérico una vez resuelto.
+    const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    throw new AuthTokenError(`Token inválido -- ${detail}`);
   }
 }

@@ -52,7 +52,8 @@ export async function POST(req: NextRequest) {
       newBalance: data.new_balance,
     });
 
-  } catch {
-    return NextResponse.json({ error: "Token inválido" }, { status: 401 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Token inválido";
+    return NextResponse.json({ error: message }, { status: 401 });
   }
 }

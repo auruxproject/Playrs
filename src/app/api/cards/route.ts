@@ -28,7 +28,8 @@ export async function GET(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(data);
-  } catch {
-    return NextResponse.json({ error: "Token inválido" }, { status: 401 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Token inválido";
+    return NextResponse.json({ error: message }, { status: 401 });
   }
 }
