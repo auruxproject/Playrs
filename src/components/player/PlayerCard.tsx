@@ -1,7 +1,9 @@
 "use client";
 
-import { Badge } from "@/components/ui/Badge";
-import { PriceDisplay } from "@/components/ui/PriceDisplay";
+import { useRef } from "react";
+import { PlayerCardIllustration, type RarityPalette } from "./PlayerCardIllustration";
+
+export type CardTier = "standard" | "silver" | "gold" | "diamond" | "legend";
 
 interface PlayerCardProps {
   ticker: string;
@@ -14,26 +16,90 @@ interface PlayerCardProps {
   maxStock?: number;
   streak?: number;
   isGold?: boolean;
-  tier?: "standard" | "silver" | "gold" | "diamond" | "legend";
+  tier?: CardTier;
   isFrozen?: boolean;
   onClick?: () => void;
   onInfoClick?: () => void;
-  rating?: number; // 0 to 5 rating scale
+  /** Rating 0-5. Se muestra "—" si no está disponible -- nunca se inventa. */
+  rating?: number;
+  /** Nacionalidad real, ej. "Francia 🇫🇷" -- se extrae solo el emoji de bandera. */
+  nationality?: string;
+  /** Edad real. "—" si no está disponible. */
+  age?: number;
+  /** Valor de mercado real (ej. "€180M"). "—" si no está disponible. */
+  marketValue?: string;
+  /** Dorsal real, si existe como dato en el catálogo. Nunca se inventa. */
+  jerseyNumber?: number;
 }
 
-const positionLabels = {
-  GK: "POR",
-  DF: "DEF",
-  MD: "MED",
-  FW: "DEL",
+const positionLabels = { GK: "POR", DF: "DEF", MD: "MED", FW: "DEL" };
+const positionColors: Record<string, string> = {
+  GK: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+  DF: "bg-purple-500/15 text-purple-400 border-purple-500/30",
+  MD: "bg-blue/15 text-blue border-blue/30",
+  FW: "bg-green/15 text-green border-green/30",
 };
 
-const positionColors = {
-  GK: "warning",
-  DF: "purple",
-  MD: "blue",
-  FW: "success",
-} as const;
+const RARITY: Record<CardTier, {
+  label: string;
+  palette: RarityPalette;
+  cardBg: string;
+  ring: string;
+  foil: boolean;
+  dotFilled: number;
+}> = {
+  standard: {
+    label: "ESTÁNDAR",
+    palette: { a: "#4c8dff", b: "#22406e" },
+    cardBg: "linear-gradient(165deg, #16233b 0%, #0a1019 100%)",
+    ring: "rgba(76,141,255,0.35)",
+    foil: false,
+    dotFilled: 1,
+  },
+  silver: {
+    label: "PLATA",
+    palette: { a: "#dbe4f2", b: "#8fa4c0" },
+    cardBg: "linear-gradient(165deg, #2a3646 0%, #0d131c 100%)",
+    ring: "rgba(219,228,242,0.35)",
+    foil: true,
+    dotFilled: 2,
+  },
+  gold: {
+    label: "ORO ÉLITE",
+    palette: { a: "#f3b23c", b: "#7a5410" },
+    cardBg: "linear-gradient(165deg, #3a2f14 0%, #140f05 100%)",
+    ring: "rgba(243,178,60,0.4)",
+    foil: true,
+    dotFilled: 3,
+  },
+  diamond: {
+    label: "DIAMANTE",
+    palette: { a: "#5ef0d8", b: "#1f6f74" },
+    cardBg: "linear-gradient(165deg, #0f3944 0%, #06131a 100%)",
+    ring: "rgba(94,240,216,0.4)",
+    foil: true,
+    dotFilled: 4,
+  },
+  legend: {
+    label: "LEYENDA",
+    palette: { a: "#c86bff", b: "#7a2bd6" },
+    cardBg: "linear-gradient(165deg, #191033 0%, #0a0714 100%)",
+    ring: "rgba(200,107,255,0.45)",
+    foil: true,
+    dotFilled: 5,
+  },
+};
+
+function getFlagEmoji(nationality?: string): string | null {
+  if (!nationality) return null;
+  const match = nationality.match(/\p{Regional_Indicator}{2}/u);
+  return match ? match[0] : null;
+}
+
+function getLastName(fullName: string): string {
+  const parts = fullName.trim().split(" ");
+  return parts[parts.length - 1];
+}
 
 export function PlayerCard({
   ticker,
@@ -51,112 +117,93 @@ export function PlayerCard({
   onClick,
   onInfoClick,
   rating,
+  nationality,
+  age,
+  marketValue,
+  jerseyNumber,
 }: PlayerCardProps) {
-  
-  const cardTier = tier || (isGold ? "gold" : "standard");
+  const cardTier: CardTier = tier || (isGold ? "gold" : "standard");
+  const r = RARITY[cardTier];
+  const cardRef = useRef<HTMLDivElement>(null);
+  const flag = getFlagEmoji(nationality);
 
-  // Custom abstract avatar representation (inspired by premium digital cards)
-  const getInitials = (fullName: string) => {
-    const parts = fullName.split(" ");
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    }
-    return fullName.slice(0, 2).toUpperCase();
+  // Tilt 3D + foil/glare posicionados en el cursor -- se actualiza vía ref
+  // directo (sin re-render) para que el seguimiento del mouse sea fluido.
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = cardRef.current;
+    if (!el || isFrozen) return;
+    const rect = el.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / rect.width; // 0..1
+    const py = (e.clientY - rect.top) / rect.height; // 0..1
+    const rotateY = (px - 0.5) * 32; // hasta ±16°
+    const rotateX = (0.5 - py) * 32;
+    el.style.setProperty("--rx", `${rotateX}deg`);
+    el.style.setProperty("--ry", `${rotateY}deg`);
+    el.style.setProperty("--mx", `${px * 100}%`);
+    el.style.setProperty("--my", `${py * 100}%`);
   };
 
-  // Club colors to style the avatar backdrop
-  const getClubGradient = () => {
-    if (team.includes("Real Madrid")) return "from-slate-700 via-slate-800 to-slate-900";
-    if (team.includes("Man City")) return "from-sky-700 via-sky-800 to-sky-950";
-    if (team.includes("Barcelona")) return "from-rose-800 via-blue-900 to-indigo-950";
-    if (team.includes("Liverpool")) return "from-red-800 via-red-950 to-zinc-950";
-    return "from-zinc-800 via-zinc-900 to-black";
+  const handleMouseLeave = () => {
+    const el = cardRef.current;
+    if (!el) return;
+    el.style.setProperty("--rx", "0deg");
+    el.style.setProperty("--ry", "0deg");
   };
-
-  // Tier specific card layouts
-  const getTierStyles = () => {
-    switch (cardTier) {
-      case "silver":
-        return {
-          cardBg: "bg-gradient-to-br from-slate-700/30 via-background-secondary to-black border-slate-400/40 shadow-[0_0_12px_rgba(148,163,184,0.08)]",
-          headerBg: "bg-gradient-to-r from-slate-400/20 via-slate-600/10 to-transparent text-slate-300",
-          headerLabel: "PLATA",
-          ringColor: "border-slate-400/30",
-          avatarBg: "from-slate-400 via-slate-500 to-slate-700 border-slate-400",
-          stripe: "from-slate-300 to-slate-500",
-          avatarText: "text-background",
-          headerPulse: ""
-        };
-      case "gold":
-        return {
-          cardBg: "bg-gradient-to-br from-gold-dark/40 via-background-secondary to-black border-gold/50 shadow-glow-gold/10",
-          headerBg: "bg-gradient-to-r from-gold/20 via-gold-dark/10 to-transparent text-gold",
-          headerLabel: "ORO ÉLITE",
-          ringColor: "border-gold/30",
-          avatarBg: "from-gold via-gold-dark to-yellow-900 border-gold",
-          stripe: "from-yellow-400 to-amber-600",
-          avatarText: "text-background",
-          headerPulse: ""
-        };
-      case "diamond":
-        return {
-          cardBg: "bg-gradient-to-br from-cyan-900/40 via-background-secondary to-black border-cyan-400/50 shadow-[0_0_15px_rgba(6,182,212,0.15)]",
-          headerBg: "bg-gradient-to-r from-cyan-500/20 via-cyan-700/10 to-transparent text-cyan-400",
-          headerLabel: "DIAMANTE",
-          ringColor: "border-cyan-400/30",
-          avatarBg: "from-cyan-400 via-cyan-500 to-cyan-700 border-cyan-400",
-          stripe: "from-cyan-300 to-cyan-600",
-          avatarText: "text-background",
-          headerPulse: ""
-        };
-      case "legend":
-        return {
-          cardBg: "bg-gradient-to-br from-fuchsia-950/40 via-background-secondary to-black border-fuchsia-500/60 shadow-[0_0_20px_rgba(168,85,247,0.25)] animate-pulse-slow",
-          headerBg: "bg-gradient-to-r from-fuchsia-500/35 via-purple-600/20 to-transparent text-fuchsia-400",
-          headerLabel: "LEYENDA",
-          ringColor: "border-fuchsia-500/30",
-          avatarBg: "from-fuchsia-500 via-purple-600 to-indigo-900 border-fuchsia-500",
-          stripe: "from-fuchsia-400 to-purple-600",
-          avatarText: "text-white",
-          headerPulse: "animate-pulse"
-        };
-      case "standard":
-      default:
-        return {
-          cardBg: "bg-gradient-to-br from-background-secondary via-background-secondary to-background-tertiary",
-          headerBg: "bg-white/5 text-text-tertiary",
-          headerLabel: "ESTÁNDAR",
-          ringColor: "border-white/10",
-          avatarBg: getClubGradient() + " border-white/15",
-          stripe: "from-blue to-purple",
-          avatarText: "text-white",
-          headerPulse: ""
-        };
-    }
-  };
-
-  const styles = getTierStyles();
 
   return (
     <div
+      // El contenedor de la perspectiva debe ser el PADRE del elemento que
+      // rota (no el mismo nodo) para que el tilt 3D se vea correcto.
+      className="w-full [perspective:1200px]"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+    >
+    <div
+      ref={cardRef}
       onClick={onClick}
       className={`
-        group relative flex flex-col w-full aspect-[3/4.2] rounded-2xl overflow-hidden cursor-pointer
-        transition-all duration-500 select-none border border-white/10
-        ${isFrozen ? "opacity-50 cursor-not-allowed" : "hover:-translate-y-2 hover:shadow-strong"}
-        ${styles.cardBg}
+        group relative flex flex-col w-full aspect-[3/4.25] rounded-2xl overflow-hidden select-none
+        border border-white/10 [transform-style:preserve-3d]
+        transition-[transform,opacity] duration-150 ease-out
+        ${isFrozen ? "cursor-not-allowed opacity-50 pointer-events-none" : "cursor-pointer"}
       `}
+      style={{
+        background: r.cardBg,
+        boxShadow: `0 24px 48px -18px rgba(0,0,0,.7), inset 0 0 0 1px ${r.ring}`,
+        transform: "rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg))",
+      }}
     >
-      {/* Gloss reflection shine effect on hover (Inspired by premium cards) */}
-      <div className="absolute inset-0 w-[150%] h-full bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-[1200ms] ease-out pointer-events-none z-20" />
-
-      {/* Card Season Tag / Rarity Background Header */}
+      {/* Barrido de luz ambiental en reposo -- corre siempre, sin necesitar cursor */}
       <div
-        className={`px-3 py-1 flex items-center justify-between z-10 text-[9px] font-mono font-bold tracking-widest border-b border-white/5 ${styles.headerBg}`}
-      >
-        <span>VS - 26/27</span>
+        className="absolute inset-y-0 -left-1/2 w-1/2 pointer-events-none z-10 animate-card-sweep"
+        style={{ background: "linear-gradient(115deg, transparent, rgba(255,255,255,0.35), transparent)" }}
+      />
+
+      {/* Glare: brillo blanco radial en la posición del cursor */}
+      <div
+        className="absolute inset-0 pointer-events-none z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+        style={{
+          background: "radial-gradient(circle at var(--mx,50%) var(--my,50%), rgba(255,255,255,0.35), transparent 45%)",
+        }}
+      />
+
+      {/* Foil holográfico -- solo Plata en adelante */}
+      {r.foil && (
+        <div
+          className="absolute inset-0 pointer-events-none z-20 opacity-0 group-hover:opacity-[0.26] transition-opacity duration-300"
+          style={{
+            background:
+              "conic-gradient(from 0deg at var(--mx,50%) var(--my,50%), #ff8bd6, #ffe08b, #8bffe6, #8bb4ff, #c78bff, #ff8bd6)",
+            mixBlendMode: "color-dodge",
+          }}
+        />
+      )}
+
+      {/* Header */}
+      <div className="px-3 py-1.5 flex items-center justify-between z-30 text-[9px] font-mono font-bold tracking-widest border-b border-white/10 text-white/70">
+        <span>VS · 26/27</span>
         <div className="flex items-center gap-1.5">
-          <span className={`uppercase ${styles.headerPulse}`}>{styles.headerLabel}</span>
+          <span style={{ color: r.palette.a }}>{r.label}</span>
           {onInfoClick && (
             <button
               onClick={(e) => { e.stopPropagation(); onInfoClick(); }}
@@ -171,85 +218,75 @@ export function PlayerCard({
         </div>
       </div>
 
-      {/* Card Content Core */}
-      <div className="flex-1 flex flex-col items-center justify-between p-4 z-10">
-        
-        {/* Top bar: Position and Streak */}
+      {/* Cuerpo */}
+      <div className="flex-1 flex flex-col items-center justify-between px-3 pt-2 pb-3 z-30">
+        {/* Fila superior: posición + racha/bandera */}
         <div className="w-full flex items-center justify-between">
-          <Badge variant={positionColors[position]} size="sm">
+          <span className={`px-1.5 py-0.5 rounded-md border text-[9px] font-mono font-bold ${positionColors[position]}`}>
             {positionLabels[position]}
-          </Badge>
-          <div className="flex gap-1">
+          </span>
+          <div className="flex items-center gap-1">
             {streak !== undefined && streak >= 3 && (
-              <Badge variant="fire" size="sm">
+              <span className="px-1.5 py-0.5 rounded-md bg-orange-500/15 border border-orange-500/30 text-[9px] font-mono font-bold text-orange-400">
                 🔥 {streak}
-              </Badge>
+              </span>
+            )}
+            {flag && (
+              <span className="px-1.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] leading-none">
+                {flag}
+              </span>
             )}
           </div>
         </div>
 
-        {/* Central Collectible Avatar representation */}
-        <div className="relative my-2 w-28 h-28 flex items-center justify-center shrink-0">
-          {/* Outer glowing ring */}
-          <div
-            className={`absolute inset-0 rounded-full border border-dashed animate-spin ${styles.ringColor}`}
-            style={{ animationDuration: "25s" }}
+        {/* Ilustración central */}
+        <div className="w-[88%] aspect-square flex items-center justify-center my-1">
+          <PlayerCardIllustration
+            jerseyNumber={jerseyNumber}
+            ticker={ticker}
+            lastName={getLastName(name)}
+            palette={r.palette}
           />
-
-          {/* Core avatar body */}
-          <div
-            className={`relative w-24 h-24 rounded-full bg-gradient-to-br ${styles.avatarBg} border-2 shadow-medium overflow-hidden flex flex-col items-center justify-center group-hover:scale-105 transition-transform duration-500`}
-          >
-            {/* Holographic background line */}
-            <div className="absolute inset-0 opacity-10 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent" />
-            
-            <span className={`text-2xl font-sans font-black tracking-tighter ${styles.avatarText}`}>
-              {getInitials(name)}
-            </span>
-            <span className={`text-[8px] font-mono mt-0.5 font-bold ${cardTier !== "standard" ? "text-background/80" : "text-text-secondary"}`}>
-              {ticker}
-            </span>
-
-            {/* Tactical jersey stripe representation */}
-            <div className={`absolute bottom-0 w-full h-1 bg-gradient-to-r ${styles.stripe}`} />
-          </div>
         </div>
 
-        {/* Player Name and Club details */}
+        {/* Nombre + club */}
         <div className="text-center w-full">
-          <h4 className="text-sm font-sans font-bold text-text-primary group-hover:text-blue transition-colors truncate">
-            {name}
-          </h4>
-          <span className="text-[10px] text-text-tertiary uppercase tracking-wider block mt-0.5">
+          <h4 className="text-sm font-bold text-white truncate">{name}</h4>
+          <span className="text-[9px] text-white/50 uppercase tracking-widest block mt-0.5">
             {team}
           </span>
-          {rating !== undefined && (
-            <div className="flex items-center justify-center gap-0.5 mt-1 text-[10px]">
-              <div className="flex text-gold">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <span key={i} className="leading-none">
-                    {i < Math.round(rating) ? "★" : "☆"}
-                  </span>
-                ))}
-              </div>
-              <span className="text-[8px] text-text-tertiary font-mono ml-1">({rating.toFixed(1)}/5)</span>
-            </div>
-          )}
         </div>
 
-        {/* Price Tag Footer */}
-        <div className="w-full pt-3 border-t border-white/5 flex items-center justify-between font-mono-nums">
+        {/* Mini panel de stats: Rating / Edad / Valor */}
+        <div className="w-full grid grid-cols-3 gap-1 mt-2">
+          {[
+            { label: "RATING", value: rating !== undefined ? rating.toFixed(1) : "—" },
+            { label: "EDAD", value: age !== undefined ? String(age) : "—" },
+            { label: "VALOR", value: marketValue ?? "—" },
+          ].map((s) => (
+            <div key={s.label} className="bg-white/5 rounded-lg py-1 text-center">
+              <div className="text-[7px] font-mono text-white/40 uppercase tracking-wider">{s.label}</div>
+              <div className="text-[10px] font-bold text-white/90 font-mono-nums">{s.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer: precio + puntos de rareza / cambio */}
+        <div className="w-full pt-2 mt-2 border-t border-white/10 flex items-end justify-between font-mono-nums">
           <div className="text-left">
-            <span className="block text-[8px] text-text-tertiary uppercase font-mono">Valor Ficha</span>
-            <span className="text-sm font-bold text-text-primary">${price.toFixed(2)}</span>
+            <span className="text-sm font-bold text-white">${price.toFixed(2)}</span>
+            <div className="flex gap-0.5 mt-1">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <span
+                  key={i}
+                  className="w-1.5 h-1.5 rounded-full"
+                  style={{ background: i < r.dotFilled ? r.palette.a : "rgba(255,255,255,0.15)" }}
+                />
+              ))}
+            </div>
           </div>
           <div className="text-right">
-            <span className="block text-[8px] text-text-tertiary uppercase font-mono">Cambio</span>
-            <span
-              className={`text-xs font-bold ${
-                change >= 0 ? "text-green" : "text-red"
-              }`}
-            >
+            <span className={`text-xs font-bold ${change >= 0 ? "text-green" : "text-red"}`}>
               {change >= 0 ? "▲ +" : "▼ "}
               {Math.abs(change).toFixed(1)}%
             </span>
@@ -257,30 +294,32 @@ export function PlayerCard({
         </div>
       </div>
 
-      {/* Stock remaining overlay bar (inspired by Sorare's remaining supplies) */}
+      {/* Barra de stock restante */}
       {stock !== undefined && maxStock !== undefined && (
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-background-tertiary">
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40 z-30">
           <div
-            className={`h-full transition-all duration-500 ${
-              cardTier !== "standard" ? "bg-gold" : "bg-blue"
-            }`}
-            style={{ width: `${(stock / maxStock) * 100}%` }}
+            className="h-full transition-all duration-500"
+            style={{
+              width: `${(stock / maxStock) * 100}%`,
+              background: `linear-gradient(90deg, ${r.palette.a}, ${r.palette.b})`,
+            }}
           />
         </div>
       )}
 
-      {/* Frozen/Match Lock overlay */}
+      {/* Overlay de partido en vivo (Match Lock) */}
       {isFrozen && (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-30 animate-fadeIn">
-          <div className="flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-background-secondary border border-border shadow-strong">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-40 animate-fadeIn">
+          <div className="flex flex-col items-center gap-1 opacity-90">
             <span className="text-2xl">🔒</span>
-            <span className="text-[10px] font-bold uppercase tracking-widest text-text-secondary font-mono">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white font-mono">
               Match Lock
             </span>
-            <span className="text-[8px] text-text-tertiary">Partido en Vivo</span>
+            <span className="text-[8px] text-white/60">Partido en Vivo</span>
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

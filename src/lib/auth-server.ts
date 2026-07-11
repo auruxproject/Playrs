@@ -1,9 +1,12 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 // JWKS de Web3Auth (MetaMask Embedded Wallets) para verificar el idToken de
-// social login. La URL correcta es /jwks (NO /.well-known/jwks.json).
-// Ver docs/AUTENTICACION_WALLETS_KYC.md y la doc oficial de "Identity Token".
-const JWKS = createRemoteJWKSet(new URL("https://api-auth.web3auth.io/jwks"));
+// social login. Esta es la URL exacta que muestra el propio dashboard del
+// proyecto (Project Settings -> JWKS Endpoint) -- se había cambiado por error
+// a /jwks (un ejemplo genérico de la documentación) y eso causaba
+// "JWKSNoMatchingKey" porque ese endpoint no tiene las llaves de este
+// proyecto/entorno. Ver docs/AUTENTICACION_WALLETS_KYC.md.
+const JWKS = createRemoteJWKSet(new URL("https://api-auth.web3auth.io/.well-known/jwks.json"));
 
 // Client ID (público) — usado para validar el claim `aud` del token, evitando
 // que un token emitido para OTRO proyecto Web3Auth se acepte en el nuestro.
